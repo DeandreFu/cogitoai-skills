@@ -1,0 +1,43 @@
+name: Sync Skills Daily
+
+on:
+  schedule:
+    # 每天 UTC 3:00 (= 北京时间 11:00) 运行一次
+    - cron: '0 3 * * *'
+  workflow_dispatch:   # 也支持手动触发
+
+jobs:
+  sync:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: true
+
+      - name: Sync skills from OpenClaw workspace
+        run: |
+          SKILLS_DIR="$HOME/.openclaw/workspace/skills"
+          if [ ! -d "$SKILLS_DIR" ]; then
+            echo "Skills directory not found"
+            exit 0
+          fi
+          # 复制 skills 到 repo（保留 repo 里的 .git 目录）
+          rsync -av --exclude='.git' "$SKILLS_DIR/" ./skills/
+          echo "=== Synced skills ==="
+          ls -la ./skills/ 2>/dev/null || echo "No skills yet"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: sync skills from OpenClaw workspace $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin main
+            echo "=== Pushed successfully ==="
+          fi
